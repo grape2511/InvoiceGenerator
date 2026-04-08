@@ -1,64 +1,153 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { Invoice, createDefaultInvoice } from "@/types/invoice";
+import { getInvoices, getInvoice, deleteInvoice, duplicateInvoice } from "@/lib/storage";
+import InvoiceForm from "@/components/InvoiceForm";
+import InvoiceList from "@/components/InvoiceList";
+
+type View = "list" | "edit";
 
 export default function Home() {
+  const [view, setView] = useState<View>("list");
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null);
+  const [saveMessage, setSaveMessage] = useState("");
+
+  useEffect(() => {
+    setInvoices(getInvoices());
+  }, []);
+
+  const refreshList = () => setInvoices(getInvoices());
+
+  const handleNew = () => {
+    try {
+      const inv = createDefaultInvoice();
+      setCurrentInvoice(inv);
+      setView("edit");
+    } catch (err) {
+      console.error("Failed to create invoice:", err);
+      alert("Error creating invoice: " + (err as Error).message);
+    }
+  };
+
+  const handleSelect = (id: string) => {
+    const inv = getInvoice(id);
+    if (inv) {
+      setCurrentInvoice(inv);
+      setView("edit");
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    if (confirm("Delete this invoice?")) {
+      deleteInvoice(id);
+      refreshList();
+    }
+  };
+
+  const handleDuplicate = (id: string) => {
+    const copy = duplicateInvoice(id);
+    if (copy) {
+      setCurrentInvoice(copy);
+      setView("edit");
+    }
+  };
+
+  const handleBack = () => {
+    refreshList();
+    setView("list");
+    setCurrentInvoice(null);
+  };
+
+  const handleSaved = () => {
+    setSaveMessage("Invoice saved!");
+    setTimeout(() => setSaveMessage(""), 2000);
+  };
+
+  const handleInvoiceChange = useCallback((updated: Invoice) => {
+    setCurrentInvoice(updated);
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="min-h-screen">
+      {/* Top bar */}
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {/* App name / home link */}
+          <button
+            onClick={view === "edit" ? handleBack : undefined}
+            className={`flex items-center gap-2 text-xl font-bold ${
+              view === "edit"
+                ? "text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                : "text-gray-800 cursor-default"
+            }`}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Invoices
+          </button>
+
+          {/* Breadcrumb for edit view */}
+          {view === "edit" && (
+            <>
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="text-gray-500 text-sm">
+                #{currentInvoice?.invoiceNumber || ""}
+              </span>
+            </>
+          )}
+
+          {saveMessage && (
+            <span className="ml-2 text-emerald-600 text-sm font-medium bg-emerald-50 px-2 py-0.5 rounded">
+              {saveMessage}
+            </span>
+          )}
         </div>
+
+        <div className="flex items-center gap-3">
+          {view === "edit" && (
+            <button
+              onClick={handleBack}
+              className="text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg py-2 px-4 text-sm flex items-center gap-2 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              All Invoices
+            </button>
+          )}
+          <button
+            onClick={handleNew}
+            className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Invoice
+          </button>
+        </div>
+      </header>
+
+      {/* Content */}
+      <main className="p-6">
+        {view === "list" ? (
+          <InvoiceList
+            invoices={invoices}
+            onSelect={handleSelect}
+            onDelete={handleDelete}
+            onDuplicate={handleDuplicate}
+          />
+        ) : currentInvoice ? (
+          <InvoiceForm
+            invoice={currentInvoice}
+            onChange={handleInvoiceChange}
+            onSaved={handleSaved}
+          />
+        ) : null}
       </main>
     </div>
   );
