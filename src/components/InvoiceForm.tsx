@@ -17,9 +17,22 @@ interface Props {
   invoice: Invoice;
   onChange: (invoice: Invoice) => void;
   onSaved?: () => void;
+  mode?: "invoice" | "template";
+  templateName?: string;
+  onTemplateNameChange?: (name: string) => void;
+  onSave?: () => void;
 }
 
-export default function InvoiceForm({ invoice, onChange, onSaved }: Props) {
+export default function InvoiceForm({
+  invoice,
+  onChange,
+  onSaved,
+  mode = "invoice",
+  templateName = "",
+  onTemplateNameChange,
+  onSave,
+}: Props) {
+  const isTemplate = mode === "template";
   const [showDiscount, setShowDiscount] = useState(invoice.discountValue > 0);
   const [showShipping, setShowShipping] = useState(invoice.shipping > 0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,13 +99,20 @@ export default function InvoiceForm({ invoice, onChange, onSaved }: Props) {
     })}`;
 
   const handleSave = () => {
-    saveInvoice(invoice);
-    onSaved?.();
+    if (onSave) {
+      onSave();
+    } else {
+      saveInvoice(invoice);
+      onSaved?.();
+    }
   };
 
   const handleDownloadPdf = async () => {
     const el = invoiceRef.current;
     if (!el) return;
+
+    saveInvoice(invoice);
+    onSaved?.();
 
     const html2canvas = (await import("html2canvas-pro")).default;
     const { jsPDF } = await import("jspdf");
@@ -209,19 +229,31 @@ export default function InvoiceForm({ invoice, onChange, onSaved }: Props) {
               />
             </div>
 
-            {/* Invoice title + number */}
+            {/* Invoice title + number, or Template title + name */}
             <div className="text-right">
               <h1 className="text-3xl font-bold text-gray-700 tracking-wide mb-1">
-                INVOICE
+                {isTemplate ? "TEMPLATE" : "INVOICE"}
               </h1>
               <div className="flex items-center justify-end gap-1 text-gray-500">
-                <span>#</span>
-                <input
-                  type="text"
-                  value={invoice.invoiceNumber}
-                  onChange={(e) => update({ invoiceNumber: e.target.value })}
-                  className="border border-gray-200 rounded px-2 py-1 text-right w-40 text-sm"
-                />
+                {isTemplate ? (
+                  <input
+                    type="text"
+                    value={templateName}
+                    onChange={(e) => onTemplateNameChange?.(e.target.value)}
+                    placeholder="Template name (e.g. Acme Co)"
+                    className="border border-gray-200 rounded px-2 py-1 text-right w-56 text-sm"
+                  />
+                ) : (
+                  <>
+                    <span>#</span>
+                    <input
+                      type="text"
+                      value={invoice.invoiceNumber}
+                      onChange={(e) => update({ invoiceNumber: e.target.value })}
+                      className="border border-gray-200 rounded px-2 py-1 text-right w-40 text-sm"
+                    />
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -248,43 +280,66 @@ export default function InvoiceForm({ invoice, onChange, onSaved }: Props) {
               />
             </div>
 
-            {/* Dates */}
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-3">
-                <label className="text-gray-500 w-32 text-right">Date</label>
-                <DatePicker
-                  value={invoice.date}
-                  onChange={(val) => update({ date: val })}
-                />
+            {/* Dates (invoice mode only) */}
+            {isTemplate ? (
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-3">
+                  <label className="text-gray-500 w-32 text-right">
+                    Payment Terms
+                  </label>
+                  <input
+                    type="text"
+                    value={invoice.paymentTerms}
+                    onChange={(e) =>
+                      update({ paymentTerms: e.target.value })
+                    }
+                    placeholder="e.g. 14 days"
+                    className="border border-gray-200 rounded px-2 py-1 w-40"
+                  />
+                </div>
+                <p className="text-xs text-gray-400 italic max-w-[260px] text-right ml-auto">
+                  Date, due date, and PO are filled in when you create an
+                  invoice from this template.
+                </p>
               </div>
-              <div className="flex items-center gap-3">
-                <label className="text-gray-500 w-32 text-right">
-                  Payment Due
-                </label>
-                <DatePicker
-                  value={invoice.paymentDue}
-                  onChange={(val) => update({ paymentDue: val })}
-                />
+            ) : (
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-3">
+                  <label className="text-gray-500 w-32 text-right">Date</label>
+                  <DatePicker
+                    value={invoice.date}
+                    onChange={(val) => update({ date: val })}
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-gray-500 w-32 text-right">
+                    Payment Due
+                  </label>
+                  <DatePicker
+                    value={invoice.paymentDue}
+                    onChange={(val) => update({ paymentDue: val })}
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-gray-500 w-32 text-right">
+                    PO Number
+                  </label>
+                  <input
+                    type="text"
+                    value={invoice.poNumber}
+                    onChange={(e) => update({ poNumber: e.target.value })}
+                    className="border border-gray-200 rounded px-2 py-1 w-40"
+                  />
+                </div>
+                {/* Balance due */}
+                <div className="flex items-center gap-3 bg-gray-600 text-white rounded px-3 py-2 mt-2">
+                  <span className="w-32 text-right font-medium">Balance Due</span>
+                  <span className="w-40 text-right font-bold text-lg">
+                    {fmt(total)}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <label className="text-gray-500 w-32 text-right">
-                  PO Number
-                </label>
-                <input
-                  type="text"
-                  value={invoice.poNumber}
-                  onChange={(e) => update({ poNumber: e.target.value })}
-                  className="border border-gray-200 rounded px-2 py-1 w-40"
-                />
-              </div>
-              {/* Balance due */}
-              <div className="flex items-center gap-3 bg-gray-600 text-white rounded px-3 py-2 mt-2">
-                <span className="w-32 text-right font-medium">Balance Due</span>
-                <span className="w-40 text-right font-bold text-lg">
-                  {fmt(total)}
-                </span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Bill To / Ship To */}
@@ -552,31 +607,33 @@ export default function InvoiceForm({ invoice, onChange, onSaved }: Props) {
 
       {/* Sidebar */}
       <div className="w-[200px] space-y-4 shrink-0">
-        <button
-          onClick={handleDownloadPdf}
-          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        {!isTemplate && (
+          <button
+            onClick={handleDownloadPdf}
+            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-            />
-          </svg>
-          Download PDF
-        </button>
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+            Download PDF
+          </button>
+        )}
 
         <button
           onClick={handleSave}
           className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
         >
-          Save Invoice
+          {isTemplate ? "Save Template" : "Save Invoice"}
         </button>
 
         <div>

@@ -1,102 +1,218 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Invoice, createDefaultInvoice } from "@/types/invoice";
-import { getInvoices, getInvoice, deleteInvoice, duplicateInvoice } from "@/lib/storage";
+import {
+  Invoice,
+  Template,
+  createDefaultInvoice,
+  createDefaultTemplate,
+  templateToInvoiceShape,
+  invoiceShapeToTemplate,
+  createInvoiceFromTemplate,
+} from "@/types/invoice";
+import {
+  getInvoices,
+  getInvoice,
+  saveInvoice,
+  deleteInvoice,
+  duplicateInvoice,
+} from "@/lib/storage";
+import {
+  getTemplates,
+  getTemplate,
+  saveTemplate,
+  deleteTemplate,
+} from "@/lib/templateStorage";
 import InvoiceForm from "@/components/InvoiceForm";
 import InvoiceList from "@/components/InvoiceList";
+import TemplateList from "@/components/TemplateList";
 
-type View = "list" | "edit";
+type Tab = "invoices" | "templates";
+type View = "list" | "edit-invoice" | "edit-template";
 
 export default function Home() {
+  const [tab, setTab] = useState<Tab>("invoices");
   const [view, setView] = useState<View>("list");
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null);
+  const [currentTemplateName, setCurrentTemplateName] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
     setInvoices(getInvoices());
+    setTemplates(getTemplates());
   }, []);
 
-  const refreshList = () => setInvoices(getInvoices());
+  const refreshInvoices = () => setInvoices(getInvoices());
+  const refreshTemplates = () => setTemplates(getTemplates());
 
-  const handleNew = () => {
+  const flashSaveMessage = (msg: string) => {
+    setSaveMessage(msg);
+    setTimeout(() => setSaveMessage(""), 2000);
+  };
+
+  // ---- Invoice handlers ----
+
+  const handleNewInvoice = () => {
     try {
       const inv = createDefaultInvoice();
       setCurrentInvoice(inv);
-      setView("edit");
+      setView("edit-invoice");
     } catch (err) {
       console.error("Failed to create invoice:", err);
       alert("Error creating invoice: " + (err as Error).message);
     }
   };
 
-  const handleSelect = (id: string) => {
+  const handleSelectInvoice = (id: string) => {
     const inv = getInvoice(id);
     if (inv) {
       setCurrentInvoice(inv);
-      setView("edit");
+      setView("edit-invoice");
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDeleteInvoice = (id: string) => {
     if (confirm("Delete this invoice?")) {
       deleteInvoice(id);
-      refreshList();
+      refreshInvoices();
     }
   };
 
-  const handleDuplicate = (id: string) => {
+  const handleDuplicateInvoice = (id: string) => {
     const copy = duplicateInvoice(id);
     if (copy) {
       setCurrentInvoice(copy);
-      setView("edit");
+      setView("edit-invoice");
     }
   };
 
-  const handleBack = () => {
-    refreshList();
-    setView("list");
-    setCurrentInvoice(null);
+  // ---- Template handlers ----
+
+  const handleNewTemplate = () => {
+    const t = createDefaultTemplate();
+    setCurrentInvoice(templateToInvoiceShape(t));
+    setCurrentTemplateName(t.name);
+    setView("edit-template");
   };
 
-  const handleSaved = () => {
-    setSaveMessage("Invoice saved!");
-    setTimeout(() => setSaveMessage(""), 2000);
+  const handleSelectTemplate = (id: string) => {
+    const t = getTemplate(id);
+    if (t) {
+      setCurrentInvoice(templateToInvoiceShape(t));
+      setCurrentTemplateName(t.name);
+      setView("edit-template");
+    }
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    if (confirm("Delete this template?")) {
+      deleteTemplate(id);
+      refreshTemplates();
+    }
+  };
+
+  const handleUseTemplate = (id: string) => {
+    const t = getTemplate(id);
+    if (!t) return;
+    const inv = createInvoiceFromTemplate(t);
+    setCurrentInvoice(inv);
+    setView("edit-invoice");
+    setTab("invoices");
+  };
+
+  const handleSaveTemplate = () => {
+    if (!currentInvoice) return;
+    if (!currentTemplateName.trim()) {
+      alert("Please enter a template name before saving.");
+      return;
+    }
+    const t = invoiceShapeToTemplate(currentInvoice, currentTemplateName.trim());
+    saveTemplate(t);
+    refreshTemplates();
+    flashSaveMessage("Template saved!");
+  };
+
+  // ---- Shared handlers ----
+
+  const handleBack = () => {
+    refreshInvoices();
+    refreshTemplates();
+    setView("list");
+    setCurrentInvoice(null);
+    setCurrentTemplateName("");
+  };
+
+  const handleInvoiceSaved = () => {
+    flashSaveMessage("Invoice saved!");
+    refreshInvoices();
   };
 
   const handleInvoiceChange = useCallback((updated: Invoice) => {
     setCurrentInvoice(updated);
   }, []);
 
+  const handleTabChange = (next: Tab) => {
+    setTab(next);
+    setView("list");
+    setCurrentInvoice(null);
+    setCurrentTemplateName("");
+  };
+
+  const isEditing = view !== "list";
+  const editingTemplate = view === "edit-template";
+
   return (
     <div className="min-h-screen">
       {/* Top bar */}
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {/* App name / home link */}
           <button
-            onClick={view === "edit" ? handleBack : undefined}
+            onClick={isEditing ? handleBack : undefined}
             className={`flex items-center gap-2 text-xl font-bold ${
-              view === "edit"
+              isEditing
                 ? "text-indigo-600 hover:text-indigo-800 cursor-pointer"
                 : "text-gray-800 cursor-default"
             }`}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
-            Invoices
+            Invoice Generator
           </button>
 
-          {/* Breadcrumb for edit view */}
-          {view === "edit" && (
+          {isEditing && (
             <>
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <svg
+                className="w-4 h-4 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
               <span className="text-gray-500 text-sm">
-                #{currentInvoice?.invoiceNumber || ""}
+                {editingTemplate
+                  ? currentTemplateName
+                    ? `Template: ${currentTemplateName}`
+                    : "New Template"
+                  : `#${currentInvoice?.invoiceNumber || ""}`}
               </span>
             </>
           )}
@@ -109,43 +225,131 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
-          {view === "edit" && (
+          {isEditing ? (
             <button
               onClick={handleBack}
               className="text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg py-2 px-4 text-sm flex items-center gap-2 transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                />
               </svg>
-              All Invoices
+              Back to list
+            </button>
+          ) : tab === "invoices" ? (
+            <button
+              onClick={handleNewInvoice}
+              className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              New Invoice
+            </button>
+          ) : (
+            <button
+              onClick={handleNewTemplate}
+              className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              New Template
             </button>
           )}
-          <button
-            onClick={handleNew}
-            className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Invoice
-          </button>
         </div>
       </header>
+
+      {/* Tabs (list view only) */}
+      {!isEditing && (
+        <div className="bg-white border-b border-gray-200 px-6">
+          <div className="max-w-4xl mx-auto flex gap-6">
+            <button
+              onClick={() => handleTabChange("invoices")}
+              className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                tab === "invoices"
+                  ? "border-indigo-500 text-indigo-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Invoices
+              <span className="ml-2 text-xs text-gray-400">
+                {invoices.length}
+              </span>
+            </button>
+            <button
+              onClick={() => handleTabChange("templates")}
+              className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                tab === "templates"
+                  ? "border-indigo-500 text-indigo-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Templates
+              <span className="ml-2 text-xs text-gray-400">
+                {templates.length}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <main className="p-6">
         {view === "list" ? (
-          <InvoiceList
-            invoices={invoices}
-            onSelect={handleSelect}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
-          />
+          tab === "invoices" ? (
+            <InvoiceList
+              invoices={invoices}
+              onSelect={handleSelectInvoice}
+              onDelete={handleDeleteInvoice}
+              onDuplicate={handleDuplicateInvoice}
+            />
+          ) : (
+            <TemplateList
+              templates={templates}
+              onSelect={handleSelectTemplate}
+              onUse={handleUseTemplate}
+              onDelete={handleDeleteTemplate}
+            />
+          )
         ) : currentInvoice ? (
           <InvoiceForm
             invoice={currentInvoice}
             onChange={handleInvoiceChange}
-            onSaved={handleSaved}
+            onSaved={handleInvoiceSaved}
+            mode={editingTemplate ? "template" : "invoice"}
+            templateName={currentTemplateName}
+            onTemplateNameChange={setCurrentTemplateName}
+            onSave={editingTemplate ? handleSaveTemplate : undefined}
           />
         ) : null}
       </main>
