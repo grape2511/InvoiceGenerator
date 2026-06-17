@@ -21,6 +21,8 @@ interface Props {
   templateName?: string;
   onTemplateNameChange?: (name: string) => void;
   onSave?: () => void;
+  onSaveAsTemplate?: () => void;
+  onDiscard?: () => void;
 }
 
 export default function InvoiceForm({
@@ -31,6 +33,8 @@ export default function InvoiceForm({
   templateName = "",
   onTemplateNameChange,
   onSave,
+  onSaveAsTemplate,
+  onDiscard,
 }: Props) {
   const isTemplate = mode === "template";
   const [showDiscount, setShowDiscount] = useState(invoice.discountValue > 0);
@@ -635,6 +639,50 @@ export default function InvoiceForm({
         >
           {isTemplate ? "Save Template" : "Save Invoice"}
         </button>
+
+        {!isTemplate && onSaveAsTemplate && (
+          <button
+            onClick={onSaveAsTemplate}
+            className="w-full border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 5a2 2 0 012-2h8.586a1 1 0 01.707.293l2.414 2.414a1 1 0 01.293.707V19a2 2 0 01-2 2H7a2 2 0 01-2-2V5z M9 3v4h6V3"
+              />
+            </svg>
+            Save as Template
+          </button>
+        )}
+
+        {onDiscard && (
+          <button
+            onClick={onDiscard}
+            className="w-full border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600 font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            {isTemplate ? "Discard Template" : "Discard Invoice"}
+          </button>
+        )}
 
         <div>
           <label className="text-xs text-gray-500 font-medium block mb-1">

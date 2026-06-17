@@ -26,8 +26,9 @@ import {
 import InvoiceForm from "@/components/InvoiceForm";
 import InvoiceList from "@/components/InvoiceList";
 import TemplateList from "@/components/TemplateList";
+import CardReceiptsTab from "@/components/CardReceiptsTab";
 
-type Tab = "invoices" | "templates";
+type Tab = "invoices" | "templates" | "receipts";
 type View = "list" | "edit-invoice" | "edit-template";
 
 export default function Home() {
@@ -149,6 +150,36 @@ export default function Home() {
     refreshInvoices();
   };
 
+  const handleSaveInvoiceAsTemplate = () => {
+    if (!currentInvoice) return;
+    const name = prompt("Save this invoice as a template. Template name:");
+    if (name === null) return; // cancelled
+    if (!name.trim()) {
+      alert("Please enter a template name.");
+      return;
+    }
+    const t = invoiceShapeToTemplate(currentInvoice, name.trim());
+    // The current invoice keeps its own id; the template is a new record.
+    t.id = crypto.randomUUID();
+    t.createdAt = new Date().toISOString();
+    saveTemplate(t);
+    refreshTemplates();
+    flashSaveMessage("Saved as template!");
+  };
+
+  const handleDiscard = () => {
+    const noun = editingTemplate ? "template" : "invoice";
+    // Unsaved edits live only in state, so returning to the list without
+    // saving is all that's needed — nothing was persisted.
+    if (
+      confirm(
+        `Discard this ${noun}? Any unsaved changes will be lost.`
+      )
+    ) {
+      handleBack();
+    }
+  };
+
   const handleInvoiceChange = useCallback((updated: Invoice) => {
     setCurrentInvoice(updated);
   }, []);
@@ -245,7 +276,7 @@ export default function Home() {
               </svg>
               Back to list
             </button>
-          ) : tab === "invoices" ? (
+          ) : tab === "receipts" ? null : tab === "invoices" ? (
             <button
               onClick={handleNewInvoice}
               className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
@@ -319,6 +350,17 @@ export default function Home() {
                 {templates.length}
               </span>
             </button>
+            <button
+              onClick={() => handleTabChange("receipts")}
+              className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                tab === "receipts"
+                  ? "border-indigo-500 text-indigo-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Card Receipts
+              <span className="ml-1 text-xs text-indigo-400 align-middle">✦</span>
+            </button>
           </div>
         </div>
       )}
@@ -326,7 +368,9 @@ export default function Home() {
       {/* Content */}
       <main className="p-6">
         {view === "list" ? (
-          tab === "invoices" ? (
+          tab === "receipts" ? (
+            <CardReceiptsTab />
+          ) : tab === "invoices" ? (
             <InvoiceList
               invoices={invoices}
               onSelect={handleSelectInvoice}
@@ -350,6 +394,10 @@ export default function Home() {
             templateName={currentTemplateName}
             onTemplateNameChange={setCurrentTemplateName}
             onSave={editingTemplate ? handleSaveTemplate : undefined}
+            onSaveAsTemplate={
+              editingTemplate ? undefined : handleSaveInvoiceAsTemplate
+            }
+            onDiscard={handleDiscard}
           />
         ) : null}
       </main>

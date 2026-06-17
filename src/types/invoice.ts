@@ -261,7 +261,7 @@ export function createInvoiceFromTemplate(t: Template): Invoice {
   };
 }
 
-function generateInvoiceNumber(): string {
+export function generateInvoiceNumber(): string {
   if (typeof window === "undefined") return "";
   const year = new Date().getFullYear();
   const prefix = String(year);

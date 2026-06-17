@@ -1,4 +1,4 @@
-import { Invoice } from "@/types/invoice";
+import { Invoice, generateInvoiceNumber } from "@/types/invoice";
 
 const STORAGE_KEY = "invoices";
 
@@ -35,7 +35,7 @@ export function duplicateInvoice(id: string): Invoice | null {
   const copy: Invoice = {
     ...original,
     id: crypto.randomUUID(),
-    invoiceNumber: "", // will be set by the form
+    invoiceNumber: generateInvoiceNumber(), // auto-number like a brand-new invoice
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
