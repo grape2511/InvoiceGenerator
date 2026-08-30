@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Invoice,
   Template,
@@ -23,6 +23,7 @@ import {
   saveTemplate,
   deleteTemplate,
 } from "@/lib/templateStorage";
+import { exportBackup, importBackup } from "@/lib/backup";
 import InvoiceForm from "@/components/InvoiceForm";
 import InvoiceList from "@/components/InvoiceList";
 import TemplateList from "@/components/TemplateList";
@@ -39,6 +40,7 @@ export default function Home() {
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null);
   const [currentTemplateName, setCurrentTemplateName] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setInvoices(getInvoices());
@@ -47,6 +49,33 @@ export default function Home() {
 
   const refreshInvoices = () => setInvoices(getInvoices());
   const refreshTemplates = () => setTemplates(getTemplates());
+
+  // ---- Backup / restore ----
+
+  const handleExportBackup = () => {
+    try {
+      const { invoices: ni, templates: nt } = exportBackup();
+      flashSaveMessage(`Backed up ${ni} invoice(s), ${nt} template(s)`);
+    } catch (err) {
+      alert("Export failed: " + (err as Error).message);
+    }
+  };
+
+  const handleImportFile = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-importing the same file later
+    if (!file) return;
+    try {
+      const { invoices: ni, templates: nt } = await importBackup(file);
+      refreshInvoices();
+      refreshTemplates();
+      flashSaveMessage(`Restored ${ni} invoice(s), ${nt} template(s)`);
+    } catch (err) {
+      alert("Import failed: " + (err as Error).message);
+    }
+  };
 
   const flashSaveMessage = (msg: string) => {
     setSaveMessage(msg);
@@ -276,46 +305,59 @@ export default function Home() {
               </svg>
               Back to list
             </button>
-          ) : tab === "receipts" ? null : tab === "invoices" ? (
-            <button
-              onClick={handleNewInvoice}
-              className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              New Invoice
-            </button>
           ) : (
-            <button
-              onClick={handleNewTemplate}
-              className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <>
+              {/* Backup / restore — protects against browser data loss */}
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+              <button
+                onClick={() => importInputRef.current?.click()}
+                title="Restore invoices and templates from a backup file"
+                className="text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg py-2 px-3 text-sm flex items-center gap-2 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              New Template
-            </button>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v12m0-12l-4 4m4-4l4 4" transform="rotate(180 12 12)" />
+                </svg>
+                Import
+              </button>
+              <button
+                onClick={handleExportBackup}
+                title="Download a backup of all invoices and templates"
+                className="text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg py-2 px-3 text-sm flex items-center gap-2 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v12m0 0l-4-4m4 4l4-4" />
+                </svg>
+                Export
+              </button>
+              {tab === "invoices" && (
+                <button
+                  onClick={handleNewInvoice}
+                  className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Invoice
+                </button>
+              )}
+              {tab === "templates" && (
+                <button
+                  onClick={handleNewTemplate}
+                  className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Template
+                </button>
+              )}
+            </>
           )}
         </div>
       </header>
