@@ -12,14 +12,20 @@ if (!url || !key) {
   );
 }
 
-// Single browser client. Auth session is persisted in localStorage and
-// magic-link redirects are detected automatically.
-export const supabase = createClient(url ?? "", key ?? "", {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
-
 export const isSupabaseConfigured = Boolean(url && key);
+
+// Single browser client. When env vars are missing (e.g. a build before they're
+// set in Vercel), fall back to a syntactically-valid placeholder so createClient
+// doesn't throw during prerendering — the UI gates on isSupabaseConfigured and
+// never actually calls this client in that state.
+export const supabase = createClient(
+  url || "https://placeholder.supabase.co",
+  key || "placeholder-anon-key",
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  }
+);
