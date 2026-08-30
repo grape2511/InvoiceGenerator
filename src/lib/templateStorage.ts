@@ -1,30 +1,38 @@
 import { Template } from "@/types/invoice";
+import { supabase } from "@/lib/supabase";
 
-const STORAGE_KEY = "templates";
+const TABLE = "ig_templates";
 
-export function getTemplates(): Template[] {
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+export async function getTemplates(): Promise<Template[]> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("data")
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => row.data as Template);
 }
 
-export function getTemplate(id: string): Template | undefined {
-  return getTemplates().find((t) => t.id === id);
+export async function getTemplate(id: string): Promise<Template | undefined> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("data")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.data as Template) ?? undefined;
 }
 
-export function saveTemplate(template: Template): void {
-  const templates = getTemplates();
-  const index = templates.findIndex((t) => t.id === template.id);
+export async function saveTemplate(template: Template): Promise<void> {
   template.updatedAt = new Date().toISOString();
-  if (index >= 0) {
-    templates[index] = template;
-  } else {
-    templates.push(template);
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+  const { error } = await supabase.from(TABLE).upsert({
+    id: template.id,
+    data: template,
+    updated_at: template.updatedAt,
+  });
+  if (error) throw new Error(error.message);
 }
 
-export function deleteTemplate(id: string): void {
-  const templates = getTemplates().filter((t) => t.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+export async function deleteTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }

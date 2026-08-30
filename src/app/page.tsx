@@ -12,22 +12,23 @@ import {
 } from "@/types/invoice";
 import {
   getInvoices,
-  getInvoice,
   saveInvoice,
   deleteInvoice,
   duplicateInvoice,
 } from "@/lib/storage";
 import {
   getTemplates,
-  getTemplate,
   saveTemplate,
   deleteTemplate,
 } from "@/lib/templateStorage";
-import { exportBackup, importBackup } from "@/lib/backup";
+import { exportBackup, parseBackupFile } from "@/lib/backup";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import type { Session } from "@supabase/supabase-js";
 import InvoiceForm from "@/components/InvoiceForm";
 import InvoiceList from "@/components/InvoiceList";
 import TemplateList from "@/components/TemplateList";
 import CardReceiptsTab from "@/components/CardReceiptsTab";
+import Login from "@/components/Login";
 
 type Tab = "invoices" | "templates" | "receipts";
 type View = "list" | "edit-invoice" | "edit-template";
@@ -40,41 +41,57 @@ export default function Home() {
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null);
   const [currentTemplateName, setCurrentTemplateName] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  // ---- Auth ----
   useEffect(() => {
-    setInvoices(getInvoices());
-    setTemplates(getTemplates());
+    if (!isSupabaseConfigured) {
+      setAuthLoading(false);
+      return;
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  const refreshInvoices = () => setInvoices(getInvoices());
-  const refreshTemplates = () => setTemplates(getTemplates());
-
-  // ---- Backup / restore ----
-
-  const handleExportBackup = () => {
+  const loadData = useCallback(async () => {
+    setDataLoading(true);
+    setLoadError("");
     try {
-      const { invoices: ni, templates: nt } = exportBackup();
-      flashSaveMessage(`Backed up ${ni} invoice(s), ${nt} template(s)`);
+      const [inv, tpl] = await Promise.all([getInvoices(), getTemplates()]);
+      setInvoices(inv);
+      setTemplates(tpl);
     } catch (err) {
-      alert("Export failed: " + (err as Error).message);
+      setLoadError((err as Error).message);
+    } finally {
+      setDataLoading(false);
     }
-  };
+  }, []);
 
-  const handleImportFile = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-importing the same file later
-    if (!file) return;
-    try {
-      const { invoices: ni, templates: nt } = await importBackup(file);
-      refreshInvoices();
-      refreshTemplates();
-      flashSaveMessage(`Restored ${ni} invoice(s), ${nt} template(s)`);
-    } catch (err) {
-      alert("Import failed: " + (err as Error).message);
+  // Load (or clear) data whenever the signed-in user changes.
+  useEffect(() => {
+    if (session) {
+      loadData();
+    } else {
+      setInvoices([]);
+      setTemplates([]);
     }
+  }, [session, loadData]);
+
+  const refreshInvoices = async () => setInvoices(await getInvoices());
+  const refreshTemplates = async () => setTemplates(await getTemplates());
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
   };
 
   const flashSaveMessage = (msg: string) => {
@@ -82,11 +99,43 @@ export default function Home() {
     setTimeout(() => setSaveMessage(""), 2000);
   };
 
+  // ---- Backup / restore ----
+
+  const handleExportBackup = () => {
+    try {
+      exportBackup(invoices, templates);
+      flashSaveMessage(
+        `Backed up ${invoices.length} invoice(s), ${templates.length} template(s)`
+      );
+    } catch (err) {
+      alert("Export failed: " + (err as Error).message);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-importing the same file later
+    if (!file) return;
+    try {
+      const { invoices: imported, templates: importedT } =
+        await parseBackupFile(file);
+      for (const inv of imported) await saveInvoice(inv);
+      for (const t of importedT) await saveTemplate(t);
+      await refreshInvoices();
+      await refreshTemplates();
+      flashSaveMessage(
+        `Restored ${imported.length} invoice(s), ${importedT.length} template(s)`
+      );
+    } catch (err) {
+      alert("Import failed: " + (err as Error).message);
+    }
+  };
+
   // ---- Invoice handlers ----
 
   const handleNewInvoice = () => {
     try {
-      const inv = createDefaultInvoice();
+      const inv = createDefaultInvoice(invoices);
       setCurrentInvoice(inv);
       setView("edit-invoice");
     } catch (err) {
@@ -96,26 +145,30 @@ export default function Home() {
   };
 
   const handleSelectInvoice = (id: string) => {
-    const inv = getInvoice(id);
+    const inv = invoices.find((i) => i.id === id);
     if (inv) {
       setCurrentInvoice(inv);
       setView("edit-invoice");
     }
   };
 
-  const handleDeleteInvoice = (id: string) => {
+  const handleDeleteInvoice = async (id: string) => {
     if (confirm("Delete this invoice?")) {
-      deleteInvoice(id);
-      refreshInvoices();
+      try {
+        await deleteInvoice(id);
+        await refreshInvoices();
+      } catch (err) {
+        alert("Delete failed: " + (err as Error).message);
+      }
     }
   };
 
   const handleDuplicateInvoice = (id: string) => {
-    const copy = duplicateInvoice(id);
-    if (copy) {
-      setCurrentInvoice(copy);
-      setView("edit-invoice");
-    }
+    const original = invoices.find((i) => i.id === id);
+    if (!original) return;
+    const copy = duplicateInvoice(original, invoices);
+    setCurrentInvoice(copy);
+    setView("edit-invoice");
   };
 
   // ---- Template handlers ----
@@ -128,7 +181,7 @@ export default function Home() {
   };
 
   const handleSelectTemplate = (id: string) => {
-    const t = getTemplate(id);
+    const t = templates.find((x) => x.id === id);
     if (t) {
       setCurrentInvoice(templateToInvoiceShape(t));
       setCurrentTemplateName(t.name);
@@ -136,50 +189,58 @@ export default function Home() {
     }
   };
 
-  const handleDeleteTemplate = (id: string) => {
+  const handleDeleteTemplate = async (id: string) => {
     if (confirm("Delete this template?")) {
-      deleteTemplate(id);
-      refreshTemplates();
+      try {
+        await deleteTemplate(id);
+        await refreshTemplates();
+      } catch (err) {
+        alert("Delete failed: " + (err as Error).message);
+      }
     }
   };
 
   const handleUseTemplate = (id: string) => {
-    const t = getTemplate(id);
+    const t = templates.find((x) => x.id === id);
     if (!t) return;
-    const inv = createInvoiceFromTemplate(t);
+    const inv = createInvoiceFromTemplate(t, invoices);
     setCurrentInvoice(inv);
     setView("edit-invoice");
     setTab("invoices");
   };
 
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     if (!currentInvoice) return;
     if (!currentTemplateName.trim()) {
       alert("Please enter a template name before saving.");
       return;
     }
     const t = invoiceShapeToTemplate(currentInvoice, currentTemplateName.trim());
-    saveTemplate(t);
-    refreshTemplates();
-    flashSaveMessage("Template saved!");
+    try {
+      await saveTemplate(t);
+      await refreshTemplates();
+      flashSaveMessage("Template saved!");
+    } catch (err) {
+      alert("Save failed: " + (err as Error).message);
+    }
   };
 
   // ---- Shared handlers ----
 
-  const handleBack = () => {
-    refreshInvoices();
-    refreshTemplates();
+  const handleBack = async () => {
     setView("list");
     setCurrentInvoice(null);
     setCurrentTemplateName("");
+    await refreshInvoices();
+    await refreshTemplates();
   };
 
-  const handleInvoiceSaved = () => {
+  const handleInvoiceSaved = async () => {
     flashSaveMessage("Invoice saved!");
-    refreshInvoices();
+    await refreshInvoices();
   };
 
-  const handleSaveInvoiceAsTemplate = () => {
+  const handleSaveInvoiceAsTemplate = async () => {
     if (!currentInvoice) return;
     const name = prompt("Save this invoice as a template. Template name:");
     if (name === null) return; // cancelled
@@ -191,9 +252,13 @@ export default function Home() {
     // The current invoice keeps its own id; the template is a new record.
     t.id = crypto.randomUUID();
     t.createdAt = new Date().toISOString();
-    saveTemplate(t);
-    refreshTemplates();
-    flashSaveMessage("Saved as template!");
+    try {
+      await saveTemplate(t);
+      await refreshTemplates();
+      flashSaveMessage("Saved as template!");
+    } catch (err) {
+      alert("Save failed: " + (err as Error).message);
+    }
   };
 
   const handleDiscard = () => {
@@ -222,6 +287,34 @@ export default function Home() {
 
   const isEditing = view !== "list";
   const editingTemplate = view === "edit-template";
+
+  // ---- Auth gate ----
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md text-center text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-6">
+          <p className="font-medium text-amber-800 mb-2">Supabase not configured</p>
+          <p>
+            Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+            <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in the environment and
+            reload.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <span className="inline-block w-6 h-6 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Login />;
+  }
 
   return (
     <div className="min-h-screen">
@@ -359,6 +452,15 @@ export default function Home() {
               )}
             </>
           )}
+          <button
+            onClick={handleSignOut}
+            title="Sign out"
+            className="text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg py-2 px-3 text-sm flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -409,9 +511,21 @@ export default function Home() {
 
       {/* Content */}
       <main className="p-6">
+        {loadError && (
+          <div className="max-w-4xl mx-auto mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center justify-between">
+            <span>Couldn&apos;t load your data: {loadError}</span>
+            <button onClick={loadData} className="underline shrink-0 ml-3">
+              Retry
+            </button>
+          </div>
+        )}
         {view === "list" ? (
           tab === "receipts" ? (
             <CardReceiptsTab />
+          ) : dataLoading ? (
+            <div className="text-center py-20 text-gray-400">
+              <span className="inline-block w-6 h-6 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+            </div>
           ) : tab === "invoices" ? (
             <InvoiceList
               invoices={invoices}

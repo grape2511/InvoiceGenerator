@@ -84,14 +84,14 @@ export const CURRENCIES: Record<string, { symbol: string; label: string }> = {
   SEK: { symbol: "kr", label: "SEK (kr)" },
 };
 
-export function createDefaultInvoice(): Invoice {
+export function createDefaultInvoice(existing: Invoice[] = []): Invoice {
   const today = new Date();
   const dueDate = new Date(today);
   dueDate.setDate(dueDate.getDate() + 14);
 
   return {
     id: crypto.randomUUID(),
-    invoiceNumber: generateInvoiceNumber(),
+    invoiceNumber: nextInvoiceNumber(existing),
     date: formatDate(today),
     paymentTerms: "14 days",
     paymentDue: formatDate(dueDate),
@@ -222,7 +222,10 @@ export function invoiceShapeToTemplate(inv: Invoice, name: string): Template {
   };
 }
 
-export function createInvoiceFromTemplate(t: Template): Invoice {
+export function createInvoiceFromTemplate(
+  t: Template,
+  existing: Invoice[] = []
+): Invoice {
   const today = new Date();
   const days = parseInt(t.paymentTerms?.match(/\d+/)?.[0] || "14", 10);
   const dueDate = new Date(today);
@@ -230,7 +233,7 @@ export function createInvoiceFromTemplate(t: Template): Invoice {
 
   return {
     id: crypto.randomUUID(),
-    invoiceNumber: generateInvoiceNumber(),
+    invoiceNumber: nextInvoiceNumber(existing),
     date: formatDate(today),
     paymentTerms: t.paymentTerms || "14 days",
     paymentDue: formatDate(dueDate),
@@ -261,31 +264,25 @@ export function createInvoiceFromTemplate(t: Template): Invoice {
   };
 }
 
-export function generateInvoiceNumber(): string {
-  if (typeof window === "undefined") return "";
+// Computes the next sequential invoice number for the current year from the
+// already-loaded invoice list (data now lives in Supabase, not localStorage).
+export function nextInvoiceNumber(
+  invoices: { invoiceNumber?: string }[] = []
+): string {
   const year = new Date().getFullYear();
   const prefix = String(year);
   let maxCounter = 0;
-  try {
-    const data = localStorage.getItem("invoices");
-    if (data) {
-      const invoices: { invoiceNumber?: string }[] = JSON.parse(data);
-      for (const inv of invoices) {
-        const num = inv.invoiceNumber;
-        if (typeof num === "string" && num.startsWith(prefix)) {
-          const suffix = num.slice(prefix.length);
-          if (/^\d+$/.test(suffix)) {
-            const n = parseInt(suffix, 10);
-            if (n > maxCounter) maxCounter = n;
-          }
-        }
+  for (const inv of invoices) {
+    const num = inv.invoiceNumber;
+    if (typeof num === "string" && num.startsWith(prefix)) {
+      const suffix = num.slice(prefix.length);
+      if (/^\d+$/.test(suffix)) {
+        const n = parseInt(suffix, 10);
+        if (n > maxCounter) maxCounter = n;
       }
     }
-  } catch {
-    // fall through with maxCounter = 0
   }
-  const counter = maxCounter + 1;
-  return `${year}${String(counter).padStart(6, "0")}`;
+  return `${year}${String(maxCounter + 1).padStart(6, "0")}`;
 }
 
 export function formatDate(date: Date): string {

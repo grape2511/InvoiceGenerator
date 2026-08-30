@@ -1,9 +1,7 @@
-// Local backup + restore for invoices and templates.
-// This is the safety net against localStorage being cleared: export writes
-// everything to a JSON file the user keeps; import merges it back in.
+// Local backup + restore for invoices and templates. Still useful with the
+// database: Export downloads an offline copy; Import parses a file so the page
+// can re-save its contents to Supabase.
 import { Invoice, Template } from "@/types/invoice";
-import { getInvoices, saveInvoice } from "@/lib/storage";
-import { getTemplates, saveTemplate } from "@/lib/templateStorage";
 
 const BACKUP_APP = "invoice-generator";
 const BACKUP_VERSION = 1;
@@ -16,9 +14,7 @@ interface BackupFile {
   templates: Template[];
 }
 
-export function exportBackup(): { invoices: number; templates: number } {
-  const invoices = getInvoices();
-  const templates = getTemplates();
+export function exportBackup(invoices: Invoice[], templates: Template[]): void {
   const data: BackupFile = {
     app: BACKUP_APP,
     version: BACKUP_VERSION,
@@ -35,18 +31,16 @@ export function exportBackup(): { invoices: number; templates: number } {
   a.download = `invoice-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  return { invoices: invoices.length, templates: templates.length };
 }
 
-export interface ImportResult {
-  invoices: number;
-  templates: number;
+export interface ParsedBackup {
+  invoices: Invoice[];
+  templates: Template[];
 }
 
-// Merges a backup file into current storage (imported records are added or,
-// when an id already exists, overwrite that record). Existing records not in
-// the file are left untouched, so importing never deletes anything.
-export async function importBackup(file: File): Promise<ImportResult> {
+// Reads and validates a backup file, returning its records. Persisting them is
+// the caller's job (so the same file works whether storage is local or cloud).
+export async function parseBackupFile(file: File): Promise<ParsedBackup> {
   const text = await file.text();
   let parsed: unknown;
   try {
@@ -56,8 +50,12 @@ export async function importBackup(file: File): Promise<ImportResult> {
   }
 
   const data = parsed as Partial<BackupFile>;
-  const invoices = Array.isArray(data.invoices) ? data.invoices : [];
-  const templates = Array.isArray(data.templates) ? data.templates : [];
+  const invoices = Array.isArray(data.invoices)
+    ? data.invoices.filter((i) => i && typeof i.id === "string")
+    : [];
+  const templates = Array.isArray(data.templates)
+    ? data.templates.filter((t) => t && typeof t.id === "string")
+    : [];
 
   if (invoices.length === 0 && templates.length === 0) {
     throw new Error(
@@ -65,12 +63,5 @@ export async function importBackup(file: File): Promise<ImportResult> {
     );
   }
 
-  for (const inv of invoices) {
-    if (inv && typeof inv.id === "string") saveInvoice(inv);
-  }
-  for (const t of templates) {
-    if (t && typeof t.id === "string") saveTemplate(t);
-  }
-
-  return { invoices: invoices.length, templates: templates.length };
+  return { invoices, templates };
 }

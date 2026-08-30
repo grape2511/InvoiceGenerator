@@ -102,12 +102,16 @@ export default function InvoiceForm({
       maximumFractionDigits: 2,
     })}`;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (onSave) {
       onSave();
     } else {
-      saveInvoice(invoice);
-      onSaved?.();
+      try {
+        await saveInvoice(invoice);
+        onSaved?.();
+      } catch (err) {
+        alert("Save failed: " + (err as Error).message);
+      }
     }
   };
 
@@ -115,8 +119,13 @@ export default function InvoiceForm({
     const el = invoiceRef.current;
     if (!el) return;
 
-    saveInvoice(invoice);
-    onSaved?.();
+    // Persist before exporting, but still produce the PDF even if the save fails.
+    try {
+      await saveInvoice(invoice);
+      onSaved?.();
+    } catch (err) {
+      console.error("Save before PDF failed:", err);
+    }
 
     const html2canvas = (await import("html2canvas-pro")).default;
     const { jsPDF } = await import("jspdf");
