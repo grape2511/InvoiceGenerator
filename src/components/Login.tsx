@@ -4,25 +4,45 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function Login() {
+  const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const sendLink = async (e: React.FormEvent) => {
+  const sendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
-    setStatus("sending");
+    setBusy(true);
     setError("");
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      options: { shouldCreateUser: true },
     });
+    setBusy(false);
     if (error) {
       setError(error.message);
-      setStatus("idle");
     } else {
-      setStatus("sent");
+      setStep("code");
     }
+  };
+
+  const verifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = code.replace(/\s/g, "");
+    if (!token) return;
+    setBusy(true);
+    setError("");
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token,
+      type: "email",
+    });
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+    }
+    // On success, the auth state change listener in the app signs you in.
   };
 
   return (
@@ -34,43 +54,79 @@ export default function Login() {
           </svg>
           Invoice Generator
         </div>
-        <p className="text-sm text-gray-500 mb-6">
-          Sign in to access your invoices. We&apos;ll email you a secure login
-          link — no password needed.
-        </p>
 
-        {status === "sent" ? (
-          <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg p-4">
-            <p className="font-medium mb-1">Check your email</p>
-            <p>
-              We sent a login link to <strong>{email}</strong>. Open it on this
-              device to sign in.
+        {step === "email" ? (
+          <>
+            <p className="text-sm text-gray-500 mb-6">
+              Sign in to access your invoices. We&apos;ll email you a 6-digit
+              code.
             </p>
-          </div>
+            <form onSubmit={sendCode} className="space-y-3">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                {busy ? "Sending…" : "Email me a code"}
+              </button>
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                  {error}
+                </p>
+              )}
+            </form>
+          </>
         ) : (
-          <form onSubmit={sendLink} className="space-y-3">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-              required
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-            />
-            <button
-              type="submit"
-              disabled={status === "sending"}
-              className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
-            >
-              {status === "sending" ? "Sending…" : "Email me a login link"}
-            </button>
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
-          </form>
+          <>
+            <p className="text-sm text-gray-500 mb-6">
+              Enter the 6-digit code we sent to <strong>{email}</strong>.
+            </p>
+            <form onSubmit={verifyCode} className="space-y-3">
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="123456"
+                required
+                autoFocus
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-lg tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                {busy ? "Verifying…" : "Sign in"}
+              </button>
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                  {error}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("email");
+                  setCode("");
+                  setError("");
+                }}
+                className="w-full text-gray-400 hover:text-gray-600 text-xs pt-1"
+              >
+                Use a different email / resend
+              </button>
+            </form>
+          </>
         )}
       </div>
     </div>
