@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 type Mode = "google" | "password" | "code-request" | "code-verify";
 
 export default function Login() {
-  const [mode, setMode] = useState<Mode>("google");
+  const [mode, setMode] = useState<Mode>("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
