@@ -3,14 +3,30 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type Mode = "password" | "code-request" | "code-verify";
+
 export default function Login() {
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [mode, setMode] = useState<Mode>("password");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const sendCode = async (e: React.FormEvent) => {
+  const signInPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    setBusy(false);
+    if (error) setError(error.message);
+    // On success the app's auth listener signs you in.
+  };
+
+  const requestCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
     setBusy(true);
@@ -20,11 +36,8 @@ export default function Login() {
       options: { shouldCreateUser: true },
     });
     setBusy(false);
-    if (error) {
-      setError(error.message);
-    } else {
-      setStep("code");
-    }
+    if (error) setError(error.message);
+    else setMode("code-verify");
   };
 
   const verifyCode = async (e: React.FormEvent) => {
@@ -39,10 +52,7 @@ export default function Login() {
       type: "email",
     });
     setBusy(false);
-    if (error) {
-      setError(error.message);
-    }
-    // On success, the auth state change listener in the app signs you in.
+    if (error) setError(error.message);
   };
 
   return (
@@ -55,13 +65,53 @@ export default function Login() {
           Invoice Generator
         </div>
 
-        {step === "email" ? (
+        {mode === "password" && (
           <>
-            <p className="text-sm text-gray-500 mb-6">
-              Sign in to access your invoices. We&apos;ll email you a 6-digit
-              code.
-            </p>
-            <form onSubmit={sendCode} className="space-y-3">
+            <p className="text-sm text-gray-500 mb-6">Sign in to access your invoices.</p>
+            <form onSubmit={signInPassword} className="space-y-3">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="current-password"
+                required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                {busy ? "Signing in…" : "Sign in"}
+              </button>
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => { setMode("code-request"); setError(""); }}
+                className="w-full text-gray-400 hover:text-gray-600 text-xs pt-1"
+              >
+                Email me a code instead
+              </button>
+            </form>
+          </>
+        )}
+
+        {mode === "code-request" && (
+          <>
+            <p className="text-sm text-gray-500 mb-6">We&apos;ll email you a 6-digit code.</p>
+            <form onSubmit={requestCode} className="space-y-3">
               <input
                 type="email"
                 value={email}
@@ -79,16 +129,23 @@ export default function Login() {
                 {busy ? "Sending…" : "Email me a code"}
               </button>
               {error && (
-                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                  {error}
-                </p>
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
               )}
+              <button
+                type="button"
+                onClick={() => { setMode("password"); setError(""); }}
+                className="w-full text-gray-400 hover:text-gray-600 text-xs pt-1"
+              >
+                Use password instead
+              </button>
             </form>
           </>
-        ) : (
+        )}
+
+        {mode === "code-verify" && (
           <>
             <p className="text-sm text-gray-500 mb-6">
-              Enter the 6-digit code we sent to <strong>{email}</strong>.
+              Enter the 6-digit code sent to <strong>{email}</strong>.
             </p>
             <form onSubmit={verifyCode} className="space-y-3">
               <input
@@ -110,20 +167,14 @@ export default function Login() {
                 {busy ? "Verifying…" : "Sign in"}
               </button>
               {error && (
-                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                  {error}
-                </p>
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
               )}
               <button
                 type="button"
-                onClick={() => {
-                  setStep("email");
-                  setCode("");
-                  setError("");
-                }}
+                onClick={() => { setMode("password"); setCode(""); setError(""); }}
                 className="w-full text-gray-400 hover:text-gray-600 text-xs pt-1"
               >
-                Use a different email / resend
+                Back to password sign-in
               </button>
             </form>
           </>
